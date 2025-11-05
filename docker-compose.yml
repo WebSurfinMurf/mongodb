@@ -1,0 +1,94 @@
+version: '3.8'
+
+networks:
+  mongodb-net:
+    external: true
+  traefik-net:
+    external: true
+  keycloak-net:
+    external: true
+
+volumes:
+  mongodb-data:
+    external: true
+    name: mongodb_data
+  mongodb-config:
+    external: true
+    name: mongodb_config
+
+services:
+  mongodb:
+    image: mongo:${MONGO_VERSION:-6.0}
+    container_name: ${MONGO_CONTAINER:-mongodb}
+    restart: unless-stopped
+    networks:
+      - mongodb-net
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    restart: unless-stopped
+    networks:
+      - mongodb-net
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/
+      ME_CONFIG_BASICAUTH: "false"
+      ME_CONFIG_SITE_COOKIESECRET: ${ME_CONFIG_SITE_COOKIESECRET}
+      ME_CONFIG_SITE_SESSIONSECRET: ${ME_CONFIG_SITE_SESSIONSECRET}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  mongo-express-auth-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    container_name: mongo-express-auth-proxy
+    restart: unless-stopped
+    networks:
+      - traefik-net
+      - keycloak-net
+      - mongodb-net
+    env_file:
+      - $HOME/projects/secrets/mongo-express.env
+    command:
+      - --provider=keycloak-oidc
+      - --client-id=mongodb
+      - --client-secret=${KEYCLOAK_CLIENT_SECRET}
+      - --oidc-issuer-url=https://keycloak.ai-servicers.com/realms/master
+      - --redirect-url=https://mongodb.ai-servicers.com/oauth2/callback
+      - --upstream=http://mongo-express:8081
+      - --http-address=0.0.0.0:4180
+      - --email-domain=*
+      - --cookie-secret=${OAUTH2_COOKIE_SECRET}
+      - --cookie-secure=true
+      - --pass-access-token=true
+      - --pass-authorization-header=true
+      - --set-authorization-header=true
+      - --set-xauthrequest=true
+      - --skip-provider-button=true
+      - --allowed-group=/administrators
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.mongodb.rule=Host(`mongodb.ai-servicers.com`)"
+      - "traefik.http.routers.mongodb.entrypoints=websecure"
+      - "traefik.http.routers.mongodb.tls=true"
+      - "traefik.http.routers.mongodb.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mongodb.loadbalancer.server.port=4180"
+    depends_on:
+      - mongo-express
