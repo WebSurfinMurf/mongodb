@@ -54,14 +54,17 @@ for network in mongodb-net traefik-net keycloak-net; do
 done
 echo -e "${GREEN}✅ All required networks exist${NC}"
 
-# Check/create volumes
-for volume in mongodb_data mongodb_config; do
-    if ! docker volume inspect "$volume" &>/dev/null; then
-        echo "Creating $volume volume..."
-        docker volume create "$volume"
-    fi
-done
-echo -e "${GREEN}✅ MongoDB volumes ready${NC}"
+# Check/create data directories
+DATA_DIR="/home/administrator/projects/data/mongodb"
+if [ ! -d "$DATA_DIR" ]; then
+    echo "Creating MongoDB data directory..."
+    mkdir -p "$DATA_DIR/config"
+fi
+
+# Ensure correct ownership (MongoDB runs as UID 999 inside container)
+echo "Setting correct ownership on data directory..."
+docker run --rm -v "$DATA_DIR:/target" alpine chown -R 999:999 /target
+echo -e "${GREEN}✅ MongoDB data directory ready${NC}"
 
 # Validate docker-compose.yml syntax
 echo ""
@@ -127,9 +130,9 @@ echo "  - mongodb-net (database access)"
 echo "  - traefik-net (web routing)"
 echo "  - keycloak-net (authentication)"
 echo ""
-echo "Volumes:"
-echo "  - mongodb_data (database files)"
-echo "  - mongodb_config (configuration)"
+echo "Data Storage:"
+echo "  - /home/administrator/projects/data/mongodb (database files)"
+echo "  - /home/administrator/projects/data/mongodb/config (configuration)"
 echo ""
 echo "Access:"
 echo "  - Web UI: https://mongodb.ai-servicers.com"

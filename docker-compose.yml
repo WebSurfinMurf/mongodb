@@ -8,14 +8,6 @@ networks:
   keycloak-net:
     external: true
 
-volumes:
-  mongodb-data:
-    external: true
-    name: mongodb_data
-  mongodb-config:
-    external: true
-    name: mongodb_config
-
 services:
   mongodb:
     image: mongo:${MONGO_VERSION:-6.0}
@@ -29,8 +21,8 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     volumes:
-      - mongodb-data:/data/db
-      - mongodb-config:/data/configdb
+      - /home/administrator/projects/data/mongodb:/data/db
+      - /home/administrator/projects/data/mongodb/config:/data/configdb
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
       interval: 30s
